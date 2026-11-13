@@ -32,6 +32,46 @@ endclass
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+class axis_random_sequence extends uvm_sequence #(axis_transaction);
+    
+    `uvm_object_utils(axis_random_sequence)
+    
+    int unsigned word_count   = 100;
+    int unsigned packet_words = 10;
+    
+    function new(input string name = "axis_random_sequence");
+        super.new(name);
+    endfunction
+    
+    task body();
+        axis_transaction tr;
+        
+        if(word_count == 0 || packet_words == 0) begin
+            `uvm_fatal("BAD_CONFIG", "Word ve paket uzunlugu sifir olamaz.")
+        end
+        
+        for(int unsigned i = 0; i < word_count; i++) begin
+            tr = axis_transaction::type_id::create($sformatf("tr_%0d", i));
+            
+            start_item(tr);
+            
+            // Sadece DATA yı random üret
+            if(!tr.randomize(data)) begin
+                `uvm_fatal("RAND_FAIL", "DATA randomization basarisiz")
+            end
+            
+            // Her paketin son word ünü işaretli
+            // Toplam sayı paket uzunluğuna bölünmese de son word açık kalan paketi tamamlasın
+            tr.last = (((i+1) % packet_words) == 0) ||
+                      (i == word_count -1);
+            finish_item(tr);
+        end
+    endtask
+
+endclass
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 class axis_ab_sequence extends uvm_sequence #(axis_transaction);    // Bu sequence axis_transaction türünde
                                                                     // nesneler üretir
     `uvm_object_utils(axis_ab_sequence)
@@ -278,7 +318,10 @@ class axis_sink_driver extends uvm_component;
             end while (vif.m_axis_tvalid !== 1'b1);
             
             // Ready=0 3 posedge de veri alınmasın
-            repeat(3)@(posedge vif.aclk);
+            //repeat(3)@(posedge vif.aclk);
+            // Bekleme süresi rastgele olsun
+            repeat($urandom_range(7,0))
+                @(posedge vif.aclk);
             
             //Alıcı hazır
             @(negedge vif.aclk);
@@ -733,6 +776,91 @@ class axis_ab_test extends uvm_test;
         
         phase.drop_objection(this);
     endtask
+endclass
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+class axis_random_test extends axis_ab_test;
+
+    `uvm_component_utils(axis_random_test)
+    
+    function new(
+        input string name = "axis_random_test",
+        input uvm_component parent = null
+    );
+        super.new(name, parent);
+    endfunction
+    
+    task run_phase(uvm_phase phase);
+        axis_random_sequence seq;
+        
+        phase.raise_objection(this);
+        
+        seq = axis_random_sequence::type_id::create("seq");
+        seq.word_count   = 100;
+        seq.packet_words = 10;
+        
+        fork
+            begin
+                wait(vif.aresetn === 1'b1);
+                
+                seq.start(env.src_agent.sqr);
+                
+                // Kaynağın bitmesi, tüm veriler çıkması değil
+                wait(env.scb.output_count >= seq.word_count);
+                
+                // Fazladan teslim olursa monitör/scoreboard görsün
+                repeat(3)@(negedge vif.aclk);
+                
+                if(env.scb.input_count   != seq.word_count ||
+                   env.scb.output_count  != seq.word_count ||
+                   env.scb.matched_count != seq.word_count) begin
+                   
+                   `uvm_error(
+                        "RANDOM_RESULT",
+                        $sformatf(
+                            "Beklenen=%0d Giris=%0d Cikis=%0d Eslesen=%0d",
+                            seq.word_count,
+                            env.scb.input_count,
+                            env.scb.output_count,
+                            env.scb.matched_count
+                        )
+                   )
+                end
+                
+                if(env.sink_agent.mon.stalled_cycles == 0) begin
+                    `uvm_error(
+                        "NO_STALL",
+                        "Testte hic backpressure olusmadi."
+                    )
+                end
+                
+                `uvm_info(
+                    "STALL_COUNT",
+                    $sformatf(
+                        "Gozlenen bekleme cevrimi =%0d",
+                        env.sink_agent.mon.stalled_cycles
+                    ),
+                    UVM_LOW
+                )
+            end
+            
+            begin
+                repeat(2000)@(posedge vif.aclk);
+                
+                `uvm_fatal(
+                    "TIMEOUT",
+                    "Rastgele test 2000 saat cevriminde tamamlanamadi."
+                )
+            end
+        join_any
+        
+        disable fork;
+        
+        phase.drop_objection(this);
+        
+    endtask
+
 endclass
 endpackage
 `endif
