@@ -1,36 +1,21 @@
-# AXI4-Stream Interface
+# AXI4-Stream Interface — UVM Verification
 
-A 32-bit AXI4-Stream interface developed in SystemVerilog as part of the Radar DSP–CNN FPGA project.
+This RadarNet RTL block is a 32-bit, single-beat AXI4-Stream buffer written in VHDL. It passes `TDATA` and `TLAST` from input to output using `TVALID`/`TREADY` handshakes.
 
-## RTL Design
+## UVM Testbench
 
-The design implements a single-clock, single-entry AXI4-Stream buffer.
+The SystemVerilog UVM environment (`axis_uvm_pkg`) contains a source agent, a sink agent, and a FIFO scoreboard. The source agent's sequencer and driver apply stimulus, while the two monitors publish transfers sampled on rising clock edges when `TVALID` and `TREADY` are both high.
 
-- Uses `TVALID` and `TREADY` for data transfer.
-- Transfers 32-bit `TDATA` and preserves `TLAST`.
-- Holds output data stable during backpressure.
-- Supports simultaneous input and output handshakes.
-- Supports a maximum throughput of one word per clock cycle.
+`axis_ab_test` runs a directed sequence after startup reset is released.
 
-## Testbench
+1. **Send a two-beat packet.** The sequence drives `32'hAAAA_0001` with `TLAST=0`, then `32'hBBBB_0002` with `TLAST=1`. The source driver holds each beat until the DUT accepts it.
+2. **Apply three-cycle backpressure per beat.** After detecting `M_AXIS_TVALID`, the sink driver holds `M_AXIS_TREADY` low for three rising edges, then raises it to accept the beat. The sink monitor checks that `TVALID` remains asserted and that `TDATA` and `TLAST` remain stable through the handshake.
+3. **Check delivery in order.** The scoreboard queues accepted input beats and compares `TDATA` and `TLAST` against each output beat. It flags unexpected, missing, or mismatched transfers. Both monitors check transferred `TDATA` and `TLAST` for X/Z values.
 
-A SystemVerilog testbench verifies the AXI4-Stream interface using directed and randomized tests.
+## Pass Criteria
 
-- Reset behavior
-- Transfer of 1,000 data words
-- Randomized `TVALID` and `TREADY` conditions
-- Data integrity and transfer ordering using a scoreboard
-- `TLAST` propagation
-- Backpressure stability and timeout detection
+- Exactly two input transfers, two output transfers, and two matches, with no pending beats.
+- At least six observed stall cycles in total and no protocol-check errors.
+- Completion before the 200-clock-cycle watchdog expires.
 
-**Simulation Result:** PASS
-
-## Tools
-
-- SystemVerilog
-- AMD Vivado 2025.2
-- XSim
-
-## Project Status
-
-AXI4-Stream interface implemented and functionally verified. Integration with the radar DSP processing pipeline is planned.
+**Simulation tool** — Vivado 2025.2 / XSim.
