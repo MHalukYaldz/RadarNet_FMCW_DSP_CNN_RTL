@@ -128,39 +128,76 @@ class axis_driver extends uvm_driver #(axis_transaction);
             `uvm_fatal("NO_VIF", "Driver icin interface bulunamadi.")
     endfunction
     
+//    task run_phase(uvm_phase phase);
+    
+//        // Kaynak başlangıçta veri sunmasın
+//        vif.s_axis_tdata = '0;
+//        vif.s_axis_tvalid = 1'b0;
+//        vif.s_axis_tlast = 1'b0;
+        
+//        // İlk reset kalksın
+//        wait (vif.aresetn === 1'b1);
+        
+//        forever begin
+//            // Sequence dan transaction alsın
+//            seq_item_port.get_next_item(req);                       // Sequencer dan sıradaki nesneyi alır;
+//                                                                    // req, uvm_driver sınıfından gelecek
+//            // Veriyi düşen kenarda girişe ver
+//            @(negedge vif.aclk);
+//            vif.s_axis_tdata = req.data;                            // Sequence in belirlediği değerler
+//            vif.s_axis_tlast = req.last;                            // Sequence in belirlediği değerler
+//            vif.s_axis_tvalid = 1'b1;
+            
+//            // Kabul edilene kadar sinyaller değişmesin
+//            do begin
+//                @(posedge vif.aclk);
+//            end while (vif.s_axis_tready !== 1'b1);
+            
+//            // Word kabul edildi; Kaynak valid i düşsün
+//            @(negedge vif.aclk);
+//            vif.s_axis_tvalid = 1'b0;
+//            vif.s_axis_tlast = 1'b0;
+            
+//            // Sequence e bu işlemin tamamlandığını bildirsin
+//            seq_item_port.item_done();                              // Giriş aktarımının tmamlandığını sequence a
+//        end                                                         // bildirir; dest teslimi beklemiyor
+//    endtask
+
     task run_phase(uvm_phase phase);
     
-        // Kaynak başlangıçta veri sunmasın
-        vif.s_axis_tdata = '0;
-        vif.s_axis_tvalid = 1'b0;
-        vif.s_axis_tlast = 1'b0;
+        int unsigned gap_cycles;
         
-        // İlk reset kalksın
-        wait (vif.aresetn === 1'b1);
+        vif.s_axis_tdata  = '0;
+        vif.s_axis_tvalid = 1'b0;
+        vif.s_axis_tlast  = 1'b0;
+        
+        wait(vif.aresetn === 1'b1);
         
         forever begin
-            // Sequence dan transaction alsın
-            seq_item_port.get_next_item(req);                       // Sequencer dan sıradaki nesneyi alır;
-                                                                    // req, uvm_driver sınıfından gelecek
-            // Veriyi düşen kenarda girişe ver
+            seq_item_port.get_next_item(req);
+            
+            // Yeni word ü vermeden önce 0-3 ek çevrim bekle, bu aralıkta valid=0 kalmalı
+            gap_cycles = $urandom_range(3,0);
+            
             @(negedge vif.aclk);
-            vif.s_axis_tdata = req.data;                            // Sequence in belirlediği değerler
-            vif.s_axis_tlast = req.last;                            // Sequence in belirlediği değerler
+            repeat(gap_cycles)
+                @(negedge vif.aclk);
+                
+            vif.s_axis_tdata = req.data;
+            vif.s_axis_tlast = req.last;
             vif.s_axis_tvalid = 1'b1;
             
-            // Kabul edilene kadar sinyaller değişmesin
+            // Kabul edilene kadar data, valid ve last korunsun
             do begin
                 @(posedge vif.aclk);
             end while (vif.s_axis_tready !== 1'b1);
             
-            // Word kabul edildi; Kaynak valid i düşsün
             @(negedge vif.aclk);
             vif.s_axis_tvalid = 1'b0;
-            vif.s_axis_tlast = 1'b0;
+            vif.s_axis_tlast  = 1'b0;
             
-            // Sequence e bu işlemin tamamlandığını bildirsin
-            seq_item_port.item_done();                              // Giriş aktarımının tmamlandığını sequence a
-        end                                                         // bildirir; dest teslimi beklemiyor
+            seq_item_port.item_done();
+        end
     endtask
 endclass
 
@@ -173,6 +210,12 @@ class axis_source_monitor extends uvm_monitor;
     virtual axis_uvm_if vif;
     
     uvm_analysis_port #(axis_transaction) ap;
+    
+    bit          stalled_previous = 1'b0;
+    logic [31:0] held_data;
+    logic        held_last;
+    
+    int unsigned stalled_cycles = 0;
     
     function new(
         input string name = "axis_source_monitor",
@@ -189,47 +232,132 @@ class axis_source_monitor extends uvm_monitor;
         if(!uvm_config_db#(virtual axis_uvm_if)::get(
             this, "", "vif", vif
         )) begin
-            `uvm_fatal("NO_VIF", "Source monitor interface bulunamadi");
+            `uvm_fatal("NO_VIF",
+            "Source monitor interface bulunamadi"
+            )
            end
     endfunction
     
+//    task run_phase(uvm_phase phase);
+//        axis_transaction tr;
+        
+//        forever begin
+//            @(posedge vif.aclk);
+            
+//            if(vif.aresetn === 1'b1 &&
+//               vif.s_axis_tvalid === 1'b1 &&
+//               vif.s_axis_tready === 1'b1) begin
+               
+//               // Transaction alanları bit türünde olduğu için X/Z bilgisini kaybetmeden önce kontrol
+//               if($isunknown({
+//                    vif.s_axis_tdata, vif.s_axis_tlast
+//               }))
+//                    `uvm_fatal(
+//                        "Input_X",
+//                        "Kabul edilen DATA veya LAST, X/Z içeriyor."
+//                     )
+                     
+//               tr = axis_transaction::type_id::create("tr");
+               
+//               tr.data = vif.s_axis_tdata;
+//               tr.last = vif.s_axis_tlast;
+               
+//               `uvm_info(
+//                    "INPUT",
+//                    $sformatf(
+//                        "Kabul edildi: DATA = %08h LAST = %b",
+//                        tr.data, tr.last
+//                        ),
+//                        UVM_MEDIUM
+//                    )
+                
+//                ap.write(tr);
+//            end
+//        end
+//    endtask
+
     task run_phase(uvm_phase phase);
         axis_transaction tr;
         
         forever begin
             @(posedge vif.aclk);
             
-            if(vif.aresetn === 1'b1 &&
-               vif.s_axis_tvalid === 1'b1 &&
-               vif.s_axis_tready === 1'b1) begin
-               
-               // Transaction alanları bit türünde olduğu için X/Z bilgisini kaybetmeden önce kontrol
-               if($isunknown({
-                    vif.s_axis_tdata, vif.s_axis_tlast
-               }))
-                    `uvm_fatal(
-                        "Input_X",
-                        "Kabul edilen DATA veya LAST, X/Z içeriyor."
-                     )
-                     
-               tr = axis_transaction::type_id::create("tr");
-               
-               tr.data = vif.s_axis_tdata;
-               tr.last = vif.s_axis_tlast;
-               
-               `uvm_info(
-                    "INPUT",
-                    $sformatf(
-                        "Kabul edildi: DATA = %08h LAST = %b",
-                        tr.data, tr.last
+            if (vif.aresetn !== 1'b1) begin
+                stalled_previous = 1'b0;
+                stalled_cycles   = 0;
+                held_data        = '0;
+                held_last        = 1'b0;
+            end
+            else begin
+                // Önceki kenarda word kabul edilmediyse bu kenara kadar korunmalıdır
+                // ready 1 olsa da kontrol yapılır
+                if (stalled_previous) begin
+                    if(vif.s_axis_tvalid !== 1'b1 ||
+                       vif.s_axis_tdata  !== held_data ||
+                       vif.s_axis_tlast  !== held_last) begin
+                       `uvm_error(
+                       "INPUT_BACKPRESSURE",
+                       "Kaynak beklerken valid, data veya last degisti."
+                       )
+                    end
+                end
+                
+                // Sadece giriş handshake inde scb a gönder
+                if(vif.s_axis_tvalid === 1'b1 &&
+                   vif.s_axis_tready === 1'b1) begin
+                   
+                   if($isunknown({
+                      vif.s_axis_tdata,
+                      vif.s_axis_tlast
+                      })) begin
+                        `uvm_fatal(
+                        "INPUT_X",
+                        "Kabul edilen data veya last, X/Z iceriyor."
+                        )
+                   end
+                   
+                   tr = axis_transaction::type_id::create("tr");
+                   
+                   tr.data = vif.s_axis_tdata;
+                   tr.last = vif.s_axis_tlast;
+                   
+                   `uvm_info(
+                        "INPUT",
+                        $sformatf(
+                             "Kabul edildi: DATA=%08h LAST=%b",
+                             tr.data, tr.last
                         ),
                         UVM_MEDIUM
-                    )
+                   )
+                   ap.write(tr);
+                end
                 
-                ap.write(tr);
+                // Sonraki yükselen kenarda kullanılacaklar
+                stalled_previous =
+                    (vif.s_axis_tvalid === 1'b1 &&
+                     vif.s_axis_tready === 1'b0);
+                     
+                 if(stalled_previous)
+                    stalled_cycles++;
+                    
+                 held_data = vif.s_axis_tdata;
+                 held_last = vif.s_axis_tlast;
             end
         end
     endtask
+    
+    function void report_phase(uvm_phase phase);
+        super.report_phase(phase);
+        
+        `uvm_info(
+            "INPUT_STALL_COUNT",
+            $sformatf(
+                "Giris beklenen cevrimi=%0d",
+                stalled_cycles
+            ),
+            UVM_INFO
+        )
+    endfunction
 endclass
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -857,6 +985,12 @@ class axis_random_test extends axis_ab_test;
         
         disable fork;
         
+        if(env.src_agent.mon.stalled_cycles == 0) begin
+            `uvm_error(
+                "NO_INPUT_STALL",
+                "Giris beklemesi olusmadi, koruma kontrolu sinanmadi."
+            )
+        end
         phase.drop_objection(this);
         
     endtask
