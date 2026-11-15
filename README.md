@@ -3,7 +3,7 @@ RadarNet is an FPGA project targeting the PYNQ-Z2 (Zynq-7000 SoC). The goal is t
 Current Implementation
 The first hardware block is a 32-bit AXI4-Stream register slice written in VHDL. A structural top-level module instantiates the slice, which buffers one beat, preserves TDATA and TLAST under backpressure, and can accept a new beat while delivering the buffered beat on the same clock edge.
 
-A SystemVerilog UVM testbench exercises randomized payloads, source gaps, and sink backpressure. In the recorded XSim run, all 100 beats matched in order, with no UVM errors or fatals.
+A SystemVerilog UVM testbench exercises randomized payloads, source gaps, and sink backpressure. In Vivado XSim, all 100 beats matched in order, with no UVM errors or fatals.
 - [AXI4-Stream Register Slice — RTL Design and UVM Verification](AXI4_Stream_Interface_V0.1.0/)
 
 Planned Integration
