@@ -39,8 +39,8 @@ architecture RTL of range_window is
     signal last_reg     : STD_LOGIC;
     signal ready_int    : STD_LOGIC;
     
-    subtype sample_t is signed(15 downto 0);            -- Çarpım sonucu için 
-    subtype product_t is signed(32 downto 0);
+    subtype sample_t is signed(15 downto 0);			-- I veya Q için 16-bit signed tip
+    subtype product_t is signed(32 downto 0);			-- Çarpım sonucu için 33-bit signed tip
     
     -- Çarpımın 15 kesir bitini kaldır en yakın tamsayıya yuvarla
     -- Tam yarım değerler sıfırdan uzağa
